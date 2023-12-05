@@ -24,6 +24,15 @@
 
 ## Want to build your own custom firmware?
 [Building Firmware From Source](https://github.com/justcallmekoko/ESP32Marauder/wiki/installing-firmware-from-source)
+To compile correctly. When installing the libraries just instead of using the libraries that he gives just use the libraries on the [library.rar](https://github.com/gato001k1/ESP32Marauder-for-m5stickc-non-plus/blob/master/libraries.rar) file. Just decompress the file on a folder and select each folder as a library. On the arduino IDE and select sketch, include library, add .ZIP library then select each library folder that you decompressed.
+
+When downloading the Arduino IDE select the 1.8x versions becuase the new arduino 2x versions donesent support the ESP32 Spiffs Tool.
+
+
+
+Library https://github.com/wh1ter0z/ESP32Marauder
+
+
 
 ## Getting Started
 Download the [latest release](https://github.com/justcallmekoko/ESP32Marauder/releases/latest) of the firmware.  
