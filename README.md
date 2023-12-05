@@ -22,6 +22,9 @@
     
 [![Build and Push](https://github.com/justcallmekoko/ESP32Marauder/actions/workflows/build_push.yml/badge.svg)](https://github.com/justcallmekoko/ESP32Marauder/actions/workflows/build_push.yml)
 
+## Want to build your own custom firmware?
+[Building Firmware From Source](https://github.com/justcallmekoko/ESP32Marauder/wiki/installing-firmware-from-source)
+
 ## Getting Started
 Download the [latest release](https://github.com/justcallmekoko/ESP32Marauder/releases/latest) of the firmware.  
 
