@@ -30,9 +30,11 @@ To compile correctly. When installing the libraries just instead of using the li
 
 When downloading the Arduino IDE select the 1.8x versions becuase the new arduino 2x versions donesent support the ESP32 Spiffs Tool.
 
+If you want to compile it yourself for the m5stickc non plus set the values of the #define TFT_WIDTH set the value to 107 and the the #define TFT_HEIGHT to 162 on User_Setup_Marauder_M5stickc.h
+then copy everything inside User_Setup_Marauder_M5stickc.h delete everything inside User_Setup.h and then paste it there.
+Next copy the 2 files to the TFT_eSPI library folder on the arduino folder inside the documents directory because i am to lazy to try witch of the 2 files to copy xd. 
 
-
-Library https://github.com/wh1ter0z/ESP32Marauder
+Library fix credits https://github.com/wh1ter0z/ESP32Marauder
 
 
 
