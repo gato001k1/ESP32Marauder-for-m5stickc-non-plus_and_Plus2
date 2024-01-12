@@ -35,6 +35,7 @@ then copy everything inside User_Setup_Marauder_M5stickc.h delete everything ins
 Next copy the 2 files to the TFT_eSPI library folder on the arduino folder inside the documents directory because i am to lazy to try witch of the 2 files to copy xd. 
 
 Library fix credits https://github.com/wh1ter0z/ESP32Marauder
+
 Thanks to https://github.com/kazz2020 from justcallmekoko#434 for adding m5stickcplus2
 
 
