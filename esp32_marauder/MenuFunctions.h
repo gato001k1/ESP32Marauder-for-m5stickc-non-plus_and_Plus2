@@ -5,6 +5,10 @@
 
 #include "configs.h"
 
+#ifdef MARAUDER_CARDPUTER
+  #include "Keyboard.h"
+#endif
+
 #ifdef HAS_SCREEN
 
 #define BATTERY_ANALOG_ON 0
@@ -16,11 +20,21 @@
 
 #ifdef HAS_BUTTONS
   #include "Switches.h"
-  extern Switches u_btn;
-  extern Switches d_btn;
-  extern Switches l_btn;
-  extern Switches r_btn;
-  extern Switches c_btn;
+  #if (U_BTN >= 0)
+    extern Switches u_btn;
+  #endif
+  #if (D_BTN >= 0)
+    extern Switches d_btn;
+  #endif
+  #if (L_BTN >= 0)
+    extern Switches l_btn;
+  #endif
+  #if (R_BTN >= 0)
+    extern Switches r_btn;
+  #endif
+  #if (C_BTN >= 0)
+    extern Switches c_btn;
+  #endif
 #endif
 
 extern WiFiScan wifi_scan_obj;
@@ -74,6 +88,11 @@ extern Settings settings_obj;
 #define DISABLE_TOUCH 34
 #define FLIPPER 35
 #define BLANK 36
+#define PINESCAN_SNIFF 37 // Use blanks icon
+#define MULTISSID_SNIFF 37 // Use blanks icon
+#define JOINED 38
+#define FORCE 39
+#define FUNNY_BEACON 40
 
 PROGMEM void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p);
 PROGMEM bool my_touchpad_read(lv_indev_drv_t * indev_driver, lv_indev_data_t * data);
@@ -82,6 +101,8 @@ PROGMEM static lv_disp_buf_t disp_buf;
 PROGMEM static lv_color_t buf[LV_HOR_RES_MAX * 10];
 
 PROGMEM static void ta_event_cb(lv_obj_t * ta, lv_event_t event);
+PROGMEM static void join_wifi_keyboard_event_cb(lv_obj_t * keyboard, lv_event_t event);
+PROGMEM static void start_ap_keyboard_event_cb(lv_obj_t * keyboard, lv_event_t event);
 PROGMEM static void add_ssid_keyboard_event_cb(lv_obj_t * keyboard, lv_event_t event);
 PROGMEM static void html_list_cb(lv_obj_t * btn, lv_event_t event);
 PROGMEM static void ap_list_cb(lv_obj_t * btn, lv_event_t event);
@@ -146,6 +167,9 @@ class MenuFunctions
 
     Menu wifiMenu;
     Menu bluetoothMenu;
+    #ifdef HAS_GPS
+      Menu gpsMenu;   // H4W9 Added GPS Menu option to Main Menu
+    #endif
     Menu badusbMenu;
     Menu deviceMenu;
 
@@ -161,18 +185,21 @@ class MenuFunctions
 
     // WiFi menu stuff
     Menu wifiSnifferMenu;
+    Menu wifiScannerMenu;
     Menu wifiAttackMenu;
     #ifdef HAS_GPS
       Menu wardrivingMenu;
     #endif
     Menu wifiGeneralMenu;
     Menu wifiAPMenu;
+    Menu wifiIPMenu;
+    Menu ssidsMenu;
     #ifdef HAS_BT
       Menu airtagMenu;
     #endif
-    #ifndef HAS_ILI9341
+    //#ifndef HAS_ILI9341
       Menu wifiStationMenu;
-    #endif
+    //#endif
 
     // WiFi General Menu
     Menu htmlMenu;
@@ -181,6 +208,7 @@ class MenuFunctions
     Menu genAPMacMenu;
     Menu cloneAPMacMenu;
     Menu setMacMenu;
+    Menu selectProbeSSIDsMenu;
 
     // Bluetooth menu stuff
     Menu bluetoothSnifferMenu;
@@ -189,11 +217,15 @@ class MenuFunctions
     // Settings things menus
     Menu generateSSIDsMenu;
 
+    Menu evilPortalMenu;
+
     static void lv_tick_handler();
 
     // Menu icons
 
-
+    void setupSDFileList();
+    void buildSDFileMenu();
+    void displayMenuButtons();
     uint16_t getColor(uint16_t color);
     void drawAvgLine(int16_t value);
     void drawMaxLine(int16_t value, uint16_t color);
@@ -211,11 +243,14 @@ class MenuFunctions
     void displaySetting(String key, Menu* menu, int index);
     void buttonSelected(int b, int x = -1);
     void buttonNotSelected(int b, int x = -1);
-    #if (!defined(HAS_ILI9341) && defined(HAS_BUTTONS))
-      void miniKeyboard(Menu * targetMenu);
-    #endif
+    //#if (!defined(HAS_ILI9341) && defined(HAS_BUTTONS))
+      String miniKeyboard(Menu * targetMenu, bool do_pass = false);
+    //#endif
 
-    uint8_t updateTouch(uint16_t *x, uint16_t *y, uint16_t threshold = 600);
+    #ifdef MARAUDER_CARDPUTER
+      Keyboard_Class M5CardputerKeyboard = Keyboard_Class();
+      bool isKeyPressed(char c);
+    #endif
 
   public:
     MenuFunctions();
@@ -235,6 +270,7 @@ class MenuFunctions
     #ifdef HAS_GPS
       // GPS Menu
       Menu gpsInfoMenu;
+      Menu gpsPOIMenu;
     #endif
 
     Menu infoMenu;
@@ -249,6 +285,7 @@ class MenuFunctions
 
     String loaded_file = "";
 
+    void joinWiFiGFX(String essid, bool start_ap = false);
     void setGraphScale(float scale);
     void initLVGL();
     void deinitLVGL();
@@ -269,3 +306,4 @@ class MenuFunctions
 
 #endif
 #endif
+

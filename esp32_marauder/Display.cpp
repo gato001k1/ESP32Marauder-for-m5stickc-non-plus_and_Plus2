@@ -4,7 +4,109 @@
 #ifdef HAS_SCREEN
 
 Display::Display()
+#ifdef HAS_CYD_TOUCH
+  : touchscreenSPI(VSPI),
+    touchscreen(XPT2046_CS, XPT2046_IRQ)
+#endif
 {
+}
+
+int8_t Display::menuButton(uint16_t *x, uint16_t *y, bool pressed, bool check_hold) {
+  #ifdef HAS_ILI9341
+    for (uint8_t b = BUTTON_ARRAY_LEN; b < BUTTON_ARRAY_LEN + 3; b++) {
+      if (pressed && this->key[b].contains(*x, *y)) {
+        this->key[b].press(true);  // tell the button it is pressed
+      } else {
+        this->key[b].press(false);  // tell the button it is NOT pressed
+      }
+    }
+
+    for (uint8_t b = BUTTON_ARRAY_LEN; b < BUTTON_ARRAY_LEN + 3; b++) {
+      if (!check_hold) {
+        if ((this->key[b].justReleased()) && (!pressed)) {
+          return b - BUTTON_ARRAY_LEN;
+        }
+      }
+      else {
+        if ((this->key[b].isPressed())) {
+          return b - BUTTON_ARRAY_LEN;
+        }
+      }
+    }
+
+  #endif
+
+  return -1;
+}
+
+uint8_t Display::updateTouch(uint16_t *x, uint16_t *y, uint16_t threshold) {
+  #ifdef HAS_ILI9341
+    if (!this->headless_mode)
+      #ifndef HAS_CYD_TOUCH
+        return this->tft.getTouch(x, y, threshold);
+      #else
+        if (this->touchscreen.tirqTouched() && this->touchscreen.touched()) {
+          TS_Point p = this->touchscreen.getPoint();
+
+          //*x = map(p.x, 200, 3700, 1, TFT_WIDTH);
+          //*y = map(p.y, 240, 3800, 1, TFT_HEIGHT);
+
+          uint8_t rot = this->tft.getRotation();
+
+          //#ifdef HAS_CYD_PORTRAIT
+          //  rot = 0;
+          //#endif
+
+          switch (rot) {
+            case 0: // Standard Protrait
+              *x = map(p.x, 200, 3700, 1, TFT_WIDTH);
+              *y = map(p.y, 240, 3800, 1, TFT_HEIGHT);
+              break;
+            case 1:
+              *x = map(p.y, 143, 3715, 0, TFT_HEIGHT);     // Horizontal (Y axis in touch, X on screen)
+              *y = map(p.x, 3786, 216, 0, TFT_WIDTH);    // Vertical (X axis in touch, Y on screen)
+              break;
+            case 2:
+              *x = map(p.x, 3700, 200, 1, TFT_WIDTH);
+              *y = map(p.y, 3800, 240, 1, TFT_HEIGHT);
+              break;
+            case 3:
+              *x = map(p.y, 3800, 240, 1, TFT_WIDTH);
+              *y = map(p.x, 200, 3700, 1, TFT_HEIGHT);
+              break;
+          }
+          return 1;
+        }
+        else
+          return 0;
+      #endif
+    else
+      return !this->headless_mode;
+  #endif
+
+  return 0;
+}
+
+bool Display::isTouchHeld(uint16_t threshold) {
+  static unsigned long touchStartTime = 0;
+  static bool touchHeld = false;
+  uint16_t x, y;
+
+  if (this->updateTouch(&x, &y, threshold)) {
+    // Touch detected
+    if (touchStartTime == 0) {
+      touchStartTime = millis();  // First touch timestamp
+    } else if (!touchHeld && millis() - touchStartTime >= 1000) {
+      touchHeld = true;  // Held for at least 1000ms
+      return true;
+    }
+  } else {
+    // Touch released
+    touchStartTime = 0;
+    touchHeld = false;
+  }
+
+  return false;
 }
 
 // Function to prepare the display and the menus
@@ -18,41 +120,33 @@ void Display::RunSetup()
   #ifdef SCREEN_BUFFER
     screen_buffer = new LinkedList<String>();
   #endif
+
+  #ifdef HAS_CYD_TOUCH
+    this->touchscreenSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
+    this->touchscreen.begin(touchscreenSPI);
+    this->touchscreen.setRotation(0);
+  #endif
   
   tft.init();
-  #ifndef MARAUDER_M5STICKC
-    tft.setRotation(0); // Portrait
-  #endif
 
-  #ifdef MARAUDER_M5STICKC
-    tft.setRotation(1);
-  #endif
-
-  #ifdef MARAUDER_REV_FEATHER
-    tft.setRotation(1);
-  #endif
+  tft.setRotation(SCREEN_ORIENTATION);
 
   tft.setCursor(0, 0);
 
   #ifdef HAS_ILI9341
 
-    #ifdef TFT_SHIELD
-      uint16_t calData[5] = { 275, 3494, 361, 3528, 4 }; // tft.setRotation(0); // Portrait with TFT Shield
-      //Serial.println(F("Using TFT Shield"));
-    #else if defined(TFT_DIY)
-      uint16_t calData[5] = { 339, 3470, 237, 3438, 2 }; // tft.setRotation(0); // Portrait with DIY TFT
-      //Serial.println(F("Using TFT DIY"));
+    #ifndef HAS_CYD_TOUCH
+      #ifdef TFT_SHIELD
+        uint16_t calData[5] = { 275, 3494, 361, 3528, 4 }; // tft.setRotation(0); // Portrait with TFT Shield
+      #elif defined(TFT_DIY)
+        uint16_t calData[5] = { 339, 3470, 237, 3438, 2 }; // tft.setRotation(0); // Portrait with DIY TFT
+      #endif
+      tft.setTouch(calData);
     #endif
-    tft.setTouch(calData);
 
   #endif
 
-  //tft.fillScreen(TFT_BLACK);
   clearScreen();
-
-  //Serial.println("SPI_FREQUENCY: " + (String)SPI_FREQUENCY);
-  //Serial.println("SPI_READ_FREQUENCY:" + (String)SPI_READ_FREQUENCY);
-  //Serial.println("SPI_TOUCH_FREQUENCY: " + (String)SPI_TOUCH_FREQUENCY);
 
   #ifdef KIT
     pinMode(KIT_LED_BUILTIN, OUTPUT);
@@ -476,7 +570,11 @@ void Display::setupScrollArea(uint16_t tfa, uint16_t bfa) {
   //Serial.println("   bfa: " + (String)bfa);
   //Serial.println("yStart: " + (String)this->yStart);
   #ifdef HAS_ILI9341
-    tft.writecommand(ILI9341_VSCRDEF); // Vertical scroll definition
+    #ifdef HAS_ST7789
+      tft.writecommand(ST7789_VSCRDEF); // Vertical scroll definition
+    #else
+      tft.writecommand(ILI9341_VSCRDEF);
+    #endif
     tft.writedata(tfa >> 8);           // Top Fixed Area line count
     tft.writedata(tfa);
     tft.writedata((YMAX-tfa-bfa)>>8);  // Vertical Scrolling Area line count
@@ -489,7 +587,11 @@ void Display::setupScrollArea(uint16_t tfa, uint16_t bfa) {
 
 void Display::scrollAddress(uint16_t vsp) {
   #ifdef HAS_ILI9341
-    tft.writecommand(ILI9341_VSCRSADD); // Vertical scrolling pointer
+    #ifdef HAS_ST7789
+      tft.writecommand(ST7789_VSCRDEF); // Vertical scroll definition
+    #else
+      tft.writecommand(ILI9341_VSCRDEF);
+    #endif
     tft.writedata(vsp>>8);
     tft.writedata(vsp);
   #endif
@@ -609,7 +711,7 @@ void Display::drawStylus()
 //====================================================================================
 //   Decode and render the Jpeg image onto the TFT screen
 //====================================================================================
-void Display::jpegRender(int xpos, int ypos) {
+/*void Display::jpegRender(int xpos, int ypos) {
 
   // retrieve infomration about the image
   uint16_t  *pImg;
@@ -676,13 +778,13 @@ void Display::jpegRender(int xpos, int ypos) {
 
   // calculate how long it took to draw the image
   drawTime = millis() - drawTime; // Calculate the time it took
-}
+}*/
 
 //====================================================================================
 //   Print information decoded from the Jpeg image
 //====================================================================================
-void Display::jpegInfo() {
-/*
+/*void Display::jpegInfo() {
+
   Serial.println("===============");
   Serial.println("JPEG image info");
   Serial.println("===============");
@@ -696,13 +798,12 @@ void Display::jpegInfo() {
   Serial.print  ("MCU height :"); Serial.println(JpegDec.MCUHeight);
   Serial.println("===============");
   Serial.println("");
-  */
-}
+}*/
 
 //====================================================================================
 //   Open a Jpeg file and send it to the Serial port in a C array compatible format
 //====================================================================================
-void createArray(const char *filename) {
+/*void createArray(const char *filename) {
 
   // Open the named file
   fs::File jpgFile = SPIFFS.open( filename, "r");    // File handle reference for SPIFFS
@@ -742,7 +843,7 @@ void createArray(const char *filename) {
 
   Serial.println("};\r\n");
   jpgFile.close();
-}
+}*/
 
 // End JPEG_functions
 

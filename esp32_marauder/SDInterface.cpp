@@ -1,6 +1,10 @@
 #include "SDInterface.h"
 #include "lang_var.h"
 
+#ifdef HAS_C5_SD
+  SDInterface::SDInterface(SPIClass* spi, int cs)
+    : _spi(spi), _cs(cs) {}
+#endif
 
 bool SDInterface::initSD() {
   #ifdef HAS_SD
@@ -21,7 +25,7 @@ bool SDInterface::initSD() {
     pinMode(SD_CS, OUTPUT);
 
     delay(10);
-    #if defined(MARAUDER_M5STICKC)
+    #if (defined(MARAUDER_M5STICKC)) || (defined(HAS_CYD_TOUCH)) || (defined(MARAUDER_CARDPUTER))
       /* Set up SPI SD Card using external pin header
       StickCPlus Header - SPI SD Card Reader
                   3v3   -   3v3
@@ -31,10 +35,24 @@ bool SDInterface::initSD() {
                   G26   -   MOSI
                         -   CS (jumper to SD Card GND Pin)
       */
-      enum { SPI_SCK = 0, SPI_MISO = 36, SPI_MOSI = 26 };
-      this->spiExt = new SPIClass();
+      #if defined(MARAUDER_M5STICKC)
+        enum { SPI_SCK = 0, SPI_MISO = 36, SPI_MOSI = 26 };
+      #elif defined(HAS_CYD_TOUCH) || defined(MARAUDER_CARDPUTER)
+        enum { SPI_SCK = SD_SCK, SPI_MISO = SD_MISO, SPI_MOSI = SD_MOSI };
+      #else
+        enum { SPI_SCK = 0, SPI_MISO = 36, SPI_MOSI = 26 };
+      #endif
+      #ifndef MARAUDER_CARDPUTER
+        this->spiExt = new SPIClass();
+      #else
+        this->spiExt = new SPIClass(FSPI);
+      #endif
+      Serial.println("Using external SPI configuration...");
       this->spiExt->begin(SPI_SCK, SPI_MISO, SPI_MOSI, SD_CS);
       if (!SD.begin(SD_CS, *(this->spiExt))) {
+    #elif defined(HAS_C5_SD)
+      Serial.println("Using C5 SD configuration...");
+      if (!SD.begin(SD_CS, *_spi)) {
     #else
       if (!SD.begin(SD_CS)) {
     #endif
@@ -45,19 +63,9 @@ bool SDInterface::initSD() {
     else {
       this->supported = true;
       this->cardType = SD.cardType();
-      //if (cardType == CARD_MMC)
-      //  Serial.println(F("SD: MMC Mounted"));
-      //else if(cardType == CARD_SD)
-      //    Serial.println(F("SD: SDSC Mounted"));
-      //else if(cardType == CARD_SDHC)
-      //    Serial.println(F("SD: SDHC Mounted"));
-      //else
-      //    Serial.println(F("SD: UNKNOWN Card Mounted"));
 
       this->cardSizeMB = SD.cardSize() / (1024 * 1024);
     
-      //Serial.printf("SD Card Size: %lluMB\n", this->cardSizeMB);
-
       if (this->supported) {
         const int NUM_DIGITS = log10(this->cardSizeMB) + 1;
 
@@ -82,7 +90,7 @@ bool SDInterface::initSD() {
 
       this->sd_files = new LinkedList<String>();
 
-      this->sd_files->add("Back");
+      //this->sd_files->add("Back");
     
       return true;
   }
@@ -209,6 +217,15 @@ void SDInterface::runUpdate() {
     #ifdef HAS_SCREEN
       display_obj.tft.println(F(text_table2[3]));
     #endif
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    Serial.printf("Currently running: %s at 0x%X\n", running->label, running->address);
+
+    const esp_partition_t *next = esp_ota_get_next_update_partition(NULL);
+    Serial.printf("Next OTA partition: %s at 0x%X\n", next->label, next->address);
+
+    esp_err_t result = esp_ota_set_boot_partition(next);
+    Serial.printf("esp_ota_set_boot_partition result: %s\n", esp_err_to_name(result));
+
     Serial.println(F("rebooting..."));
     //SD.remove("/update.bin");      
     delay(1000);

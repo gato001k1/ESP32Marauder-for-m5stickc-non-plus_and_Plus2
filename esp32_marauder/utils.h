@@ -4,6 +4,11 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <WiFi.h>
+
+#include "configs.h"
+
+#include "esp_heap_caps.h"
 
 struct mac_addr {
    unsigned char bytes[6];
@@ -13,6 +18,13 @@ struct Station {
   uint8_t mac[6];
   bool selected;
   uint16_t packets;
+  uint16_t ap;
+};
+
+struct ProbeReqSsid {
+    String essid;
+    bool selected;
+    uint8_t requests;
 };
 
 const char apple_ouis[][9] PROGMEM = {
@@ -143,6 +155,35 @@ const char xiaomi_ouis[][9] PROGMEM = {
   "04:CF:8C", "18:59:36", "38:1A:2D", "64:B4:73", "78:02:F8", 
   "90:4E:91", "C4:0B:CB", "D0:DB:32"
 };
+
+uint8_t getDRAMUsagePercent() {
+  //size_t total = heap_caps_get_total_size(MALLOC_CAP_8BIT);
+  //size_t free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  size_t free = ESP.getFreeHeap();
+  size_t total = ESP.getHeapSize();
+  
+  if (total == 0) return 0; // Avoid division by zero
+
+  size_t used = total - free;
+  uint8_t percent = (used * 100) / total;
+  return percent;
+}
+
+#ifdef HAS_PSRAM
+  uint8_t getPSRAMUsagePercent() {
+    //size_t total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    //size_t free  = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+
+    size_t total = ESP.getPsramSize();
+    size_t free = ESP.getFreePsram();
+
+    if (total == 0) return 0; // Avoid division by zero or PSRAM not available
+
+    size_t used = total - free;
+    uint8_t percent = (used * 100) / total;
+    return percent;
+  }
+#endif
 
 String byteArrayToHexString(const std::vector<uint8_t>& byteArray) {
   String result;
@@ -314,6 +355,58 @@ String replaceOUIWithManufacturer(const char *sta_addr) {
 
   // Construct the new address: manufacturer + the remaining MAC address (after the first 3 bytes)
   return String(manufacturer) + mac_suffix;
+}
+
+IPAddress getNextIP(IPAddress currentIP, IPAddress subnetMask) {
+  // Convert IPAddress to uint32_t
+  uint32_t ipInt = (currentIP[0] << 24) | (currentIP[1] << 16) | (currentIP[2] << 8) | currentIP[3];
+  uint32_t maskInt = (subnetMask[0] << 24) | (subnetMask[1] << 16) | (subnetMask[2] << 8) | subnetMask[3];
+
+  uint32_t networkBase = ipInt & maskInt;
+  uint32_t broadcast = networkBase | ~maskInt;
+
+  uint32_t nextIP = ipInt + 1;
+
+  if (nextIP <= networkBase) {
+    nextIP = networkBase + 1;
+  }
+  if (nextIP >= broadcast) {
+    return IPAddress(0, 0, 0, 0); // no more IPs
+  }
+
+  return IPAddress(
+    (nextIP >> 24) & 0xFF,
+    (nextIP >> 16) & 0xFF,
+    (nextIP >> 8) & 0xFF,
+    nextIP & 0xFF
+  );
+}
+
+IPAddress getPrevIP(IPAddress currentIP, IPAddress subnetMask, uint16_t stepsBack) {
+  // Convert IPAddress to uint32_t
+  uint32_t ipInt = (currentIP[0] << 24) | (currentIP[1] << 16) | (currentIP[2] << 8) | currentIP[3];
+  uint32_t maskInt = (subnetMask[0] << 24) | (subnetMask[1] << 16) | (subnetMask[2] << 8) | subnetMask[3];
+
+  uint32_t networkBase = ipInt & maskInt;
+  uint32_t broadcast = networkBase | ~maskInt;
+
+  uint32_t prevIP = ipInt - stepsBack;
+
+  // Ensure prevIP is not below the usable range
+  if (prevIP <= networkBase) {
+    return IPAddress(0, 0, 0, 0);  // No more IPs
+  }
+
+  return IPAddress(
+    (prevIP >> 24) & 0xFF,
+    (prevIP >> 16) & 0xFF,
+    (prevIP >> 8) & 0xFF,
+    prevIP & 0xFF
+  );
+}
+
+uint16_t getNextPort(uint16_t port) {
+  return port + 1;
 }
 
 #endif
